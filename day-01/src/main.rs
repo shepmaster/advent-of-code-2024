@@ -1,7 +1,10 @@
+use std::collections::BTreeMap;
+
 const INPUT: &str = include_str!("../input.txt");
 
 fn main() {
     assert_eq!(2285373, compare(INPUT));
+    assert_eq!(21142653, similarity(INPUT));
 }
 
 fn compare(s: &str) -> u64 {
@@ -19,6 +22,22 @@ fn compare(s: &str) -> u64 {
                 v
             };
             big - small
+        })
+        .sum()
+}
+
+fn similarity(s: &str) -> u64 {
+    let [l, r] = parse(s);
+
+    let mut r_freqs = BTreeMap::new();
+    for v in r {
+        *r_freqs.entry(v).or_insert(0) += 1;
+    }
+
+    l.into_iter()
+        .map(|v| {
+            let freq = r_freqs.get(&v).copied().unwrap_or_default();
+            v * freq
         })
         .sum()
 }
@@ -51,7 +70,12 @@ mod test {
     const EXAMPLE: &str = include_str!("../example.txt");
 
     #[test]
-    fn example() {
+    fn example_compare() {
         assert_eq!(11, compare(EXAMPLE));
+    }
+
+    #[test]
+    fn example_similarity() {
+        assert_eq!(31, similarity(EXAMPLE));
     }
 }
