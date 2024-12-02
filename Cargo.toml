@@ -3,3 +3,4 @@ members = ["day-*"]
 resolver = "3"
 
 [workspace.dependencies]
+itertools = "0.13.0"
