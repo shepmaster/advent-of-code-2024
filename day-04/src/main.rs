@@ -4,16 +4,11 @@ const INPUT: &str = include_str!("../input.txt");
 
 fn main() {
     assert_eq!(2613, xmas_count(INPUT));
+    assert_eq!(1905, cross_mas_count(INPUT));
 }
 
 fn xmas_count(s: &str) -> usize {
-    let mut grid = BTreeMap::new();
-
-    for (y, l) in s.lines().enumerate() {
-        for (x, c) in l.chars().enumerate() {
-            grid.insert((x, y), c);
-        }
-    }
+    let grid = parse(s);
 
     grid.iter()
         .map(|(&(x, y), &c)| {
@@ -23,27 +18,15 @@ fn xmas_count(s: &str) -> usize {
 
             Direction::ALL
                 .iter()
-                .filter(|d| {
+                .filter(|&&d| {
                     let mut cursor = (x, y);
                     let to_find = ['M', 'A', 'S'];
 
                     for c_to_find in to_find {
-                        let Some(new_cursor) = d.apply(cursor) else {
-                            // Walked off the maximum possible board
-                            return false;
+                        match check_in_direction(&grid, cursor, d, c_to_find) {
+                            Some(new_cursor) => cursor = new_cursor,
+                            _ => return false,
                         };
-
-                        let Some(&c) = grid.get(&new_cursor) else {
-                            // Walked off what board we have
-                            return false;
-                        };
-
-                        if c_to_find != c {
-                            // Does not match
-                            return false;
-                        }
-
-                        cursor = new_cursor;
                     }
 
                     // Ran out of characters to find, so we must have matched them all
@@ -52,6 +35,62 @@ fn xmas_count(s: &str) -> usize {
                 .count()
         })
         .sum()
+}
+
+fn cross_mas_count(s: &str) -> usize {
+    let grid = parse(s);
+
+    grid.iter()
+        .filter(|&(&(x, y), &c)| {
+            if c != 'A' {
+                return false;
+            }
+
+            type Diag = [Direction; 2];
+
+            const DIAG_1: Diag = [Direction::UL, Direction::DR];
+            const DIAG_2: [Direction; 2] = [Direction::UR, Direction::DL];
+
+            let start = (x, y);
+
+            let check_simple = |dir, c| check_in_direction(&grid, start, dir, c).is_some();
+
+            let check_once = |[a, b]: Diag| check_simple(a, 'M') && check_simple(b, 'S');
+
+            let check_diag = |[a, b]: Diag| check_once([a, b]) || check_once([b, a]);
+
+            check_diag(DIAG_1) && check_diag(DIAG_2)
+        })
+        .count()
+}
+
+type Grid = BTreeMap<(usize, usize), char>;
+
+fn parse(s: &str) -> Grid {
+    let mut grid = BTreeMap::new();
+
+    for (y, l) in s.lines().enumerate() {
+        for (x, c) in l.chars().enumerate() {
+            grid.insert((x, y), c);
+        }
+    }
+
+    grid
+}
+
+fn check_in_direction(grid: &Grid, start: Coord, d: Direction, c_to_find: char) -> Option<Coord> {
+    // Did we walk off the maximum possible board?
+    let coord = d.apply(start)?;
+
+    // Did we walk off what board we have?
+    let &c = grid.get(&coord)?;
+
+    if c_to_find != c {
+        // Does not match
+        return None;
+    }
+
+    Some(coord)
 }
 
 type Coord = (usize, usize);
@@ -115,5 +154,10 @@ mod test {
     #[test]
     fn example() {
         assert_eq!(18, xmas_count(EXAMPLE));
+    }
+
+    #[test]
+    fn example_cross() {
+        assert_eq!(9, cross_mas_count(EXAMPLE));
     }
 }
