@@ -7,6 +7,39 @@ fn main() {
 }
 
 fn distinct_guard_positions(s: &str) -> usize {
+    use Direction::*;
+
+    let (grid, max, mut guard) = parse(s);
+
+    let mut direction = U;
+    let mut visited = BTreeSet::new();
+
+    loop {
+        visited.insert(guard);
+
+        let Some(next) = step(guard, direction, max) else {
+            break;
+        };
+
+        if grid.contains(&next) {
+            direction = direction.turn();
+            continue;
+        }
+
+        guard = next;
+    }
+
+    visited.len()
+}
+
+type Grid = BTreeSet<Coord>;
+
+type Coord = (usize, usize);
+
+#[derive(Copy, Clone)]
+struct Max(usize, usize);
+
+fn parse(s: &str) -> (Grid, Max, Coord) {
     let mut grid = BTreeSet::new();
     let mut max_x = 0;
     let mut max_y = 0;
@@ -35,77 +68,68 @@ fn distinct_guard_positions(s: &str) -> usize {
         max_y = y;
     }
 
-    let mut guard = guard.expect("Did not find a guard");
-
-    use Direction::*;
-    let mut direction = U;
-    let mut visited = BTreeSet::new();
-
-    loop {
-        visited.insert(guard);
-
-        let (x, y) = guard;
-        match direction {
-            U => {
-                let Some(y) = y.checked_sub(1) else {
-                    // Walked off grid
-                    break;
-                };
-                if grid.contains(&(x, y)) {
-                    direction = R;
-                    continue;
-                }
-                guard.1 = y;
-            }
-
-            R => {
-                let x = x + 1;
-                if x > max_x {
-                    // Walked off grid
-                    break;
-                };
-                if grid.contains(&(x, y)) {
-                    direction = D;
-                    continue;
-                }
-                guard.0 = x;
-            }
-
-            D => {
-                let y = y + 1;
-                if y > max_y {
-                    // Walked off grid
-                    break;
-                };
-                if grid.contains(&(x, y)) {
-                    direction = L;
-                    continue;
-                }
-                guard.1 = y;
-            }
-
-            L => {
-                let Some(x) = x.checked_sub(1) else {
-                    // Walked off grid
-                    break;
-                };
-                if grid.contains(&(x, y)) {
-                    direction = U;
-                    continue;
-                }
-                guard.0 = x;
-            }
-        }
-    }
-
-    visited.len()
+    let guard = guard.expect("Did not find a guard");
+    (grid, Max(max_x, max_y), guard)
 }
 
+#[derive(Copy, Clone)]
 enum Direction {
     U,
     R,
     D,
     L,
+}
+
+impl Direction {
+    fn turn(self) -> Self {
+        use Direction::*;
+
+        match self {
+            U => R,
+            R => D,
+            D => L,
+            L => U,
+        }
+    }
+}
+
+fn step(coord: Coord, direction: Direction, max: Max) -> Option<Coord> {
+    use Direction::*;
+
+    let (x, y) = coord;
+
+    let next = match direction {
+        U => {
+            // May walk off grid
+            let y = y.checked_sub(1)?;
+            (x, y)
+        }
+
+        R => {
+            let x = x + 1;
+            if x > max.0 {
+                // Walked off grid
+                return None;
+            };
+            (x, y)
+        }
+
+        D => {
+            let y = y + 1;
+            if y > max.1 {
+                // Walked off grid
+                return None;
+            };
+            (x, y)
+        }
+
+        L => {
+            // May walk off grid
+            let x = x.checked_sub(1)?;
+            (x, y)
+        }
+    };
+    Some(next)
 }
 
 #[cfg(test)]
