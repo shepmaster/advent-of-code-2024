@@ -1,13 +1,47 @@
 use bitflags::bitflags;
+use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet};
 
 const INPUT: &str = include_str!("../input.txt");
 
 fn main() {
     assert_eq!(1396562, fence_cost(INPUT));
+
+    let part_2 = fence_cost_bulk(INPUT);
+
+    // Was treating regions that touched at a diagonal as having one
+    // (shared) side.
+    assert!(part_2 > 836796);
+    assert_eq!(844132, part_2);
 }
 
 fn fence_cost(s: &str) -> usize {
+    let map = parse(s);
+    let regions = find_regions(&map);
+
+    regions.iter().map(Region::price).sum()
+}
+
+fn fence_cost_bulk(s: &str) -> usize {
+    let map = parse(s);
+    let regions = find_regions(&map);
+
+    regions.iter().map(Region::price_bulk).sum()
+}
+
+type Coord = (usize, usize);
+
+type Map = BTreeMap<Coord, char>;
+
+bitflags! {
+    #[derive(Debug, Copy, Clone)]
+    struct Direction: u8 {
+        const U = 0b01;
+        const L = 0b10;
+    }
+}
+
+fn parse(s: &str) -> Map {
     let mut map = BTreeMap::new();
 
     for (y, l) in s.lines().enumerate() {
@@ -16,26 +50,18 @@ fn fence_cost(s: &str) -> usize {
         }
     }
 
+    map
+}
+
+fn find_regions(map: &Map) -> Vec<Region> {
     let mut regions = Vec::new();
     let mut visited = BTreeSet::new();
 
     for &coord in map.keys() {
-        explore(&map, coord, &mut visited, &mut regions);
+        explore(map, coord, &mut visited, &mut regions);
     }
 
-    regions.iter().map(Region::price).sum()
-}
-
-type Coord = (usize, usize);
-
-type Map = BTreeMap<Coord, char>;
-
-bitflags! {
-    #[derive(Debug)]
-    struct Direction: u8 {
-        const U = 0b01;
-        const L = 0b10;
-    }
+    regions
 }
 
 #[derive(Debug)]
@@ -48,13 +74,85 @@ struct Region {
 
 impl Region {
     fn price(&self) -> usize {
+        self.n_perimeters() * self.tiles.len()
+    }
+
+    fn price_bulk(&self) -> usize {
+        self.n_sides() * self.tiles.len()
+    }
+
+    fn n_perimeters(&self) -> usize {
         // Only have two total bits, so the cast to usize is fine
-        let n_perimeters = self
-            .perimeter
+        self.perimeter
             .values()
             .map(|d| d.bits().count_ones() as usize)
+            .sum()
+    }
+
+    fn n_sides(&self) -> usize {
+        let mut bounds = None;
+
+        for &(x, y) in self.perimeter.keys() {
+            let (min_x, max_x, min_y, max_y) = bounds.get_or_insert((x, x, y, y));
+            *min_x = usize::min(*min_x, x);
+            *max_x = usize::max(*max_x, x);
+            *min_y = usize::min(*min_y, y);
+            *max_y = usize::max(*max_y, y);
+        }
+
+        let (min_x, max_x, min_y, max_y) = bounds.expect("No perimeter");
+
+        let xs = min_x..=max_x;
+        let ys = min_y..=max_y;
+
+        let vert_sides = xs
+            .clone()
+            .map(|x| {
+                let mut cross_edges = 0;
+
+                let chunks = ys.clone().chunk_by(|&y| {
+                    let coord = (x, y);
+                    let direction = self
+                        .perimeter
+                        .get(&coord)
+                        .copied()
+                        .unwrap_or(Direction::empty());
+
+                    if direction.contains(Direction::U) {
+                        cross_edges += 1;
+                    }
+
+                    (direction.contains(Direction::L), cross_edges % 2)
+                });
+
+                chunks.into_iter().filter(|&((v, _), _)| v).count()
+            })
             .sum::<usize>();
-        n_perimeters * self.tiles.len()
+
+        let horz_sides = ys
+            .map(|y| {
+                let mut cross_edges = 0;
+
+                let chunks = xs.clone().chunk_by(|&x| {
+                    let coord = (x, y);
+                    let direction = self
+                        .perimeter
+                        .get(&coord)
+                        .copied()
+                        .unwrap_or(Direction::empty());
+
+                    if direction.contains(Direction::L) {
+                        cross_edges += 1;
+                    }
+
+                    (direction.contains(Direction::U), cross_edges % 2)
+                });
+
+                chunks.into_iter().filter(|&((v, _), _)| v).count()
+            })
+            .sum::<usize>();
+
+        vert_sides + horz_sides
     }
 }
 
@@ -181,6 +279,12 @@ mod test {
     const EXAMPLE_2: &str = include_str!("../example-2.txt");
     const EXAMPLE_3: &str = include_str!("../example-3.txt");
 
+    // E-shaped region full of type E plants
+    const EXAMPLE_4: &str = include_str!("../example-4.txt");
+
+    // Two regions of type B plants and a single region of type A plants
+    const EXAMPLE_5: &str = include_str!("../example-5.txt");
+
     #[test]
     fn example_1() {
         assert_eq!(140, fence_cost(EXAMPLE_1));
@@ -194,5 +298,30 @@ mod test {
     #[test]
     fn example_3() {
         assert_eq!(1930, fence_cost(EXAMPLE_3));
+    }
+
+    #[test]
+    fn example_1_bulk() {
+        assert_eq!(80, fence_cost_bulk(EXAMPLE_1));
+    }
+
+    #[test]
+    fn example_2_bulk() {
+        assert_eq!(436, fence_cost_bulk(EXAMPLE_2));
+    }
+
+    #[test]
+    fn example_3_bulk() {
+        assert_eq!(1206, fence_cost_bulk(EXAMPLE_3));
+    }
+
+    #[test]
+    fn example_4_bulk() {
+        assert_eq!(236, fence_cost_bulk(EXAMPLE_4));
+    }
+
+    #[test]
+    fn example_5_bulk() {
+        assert_eq!(368, fence_cost_bulk(EXAMPLE_5));
     }
 }
