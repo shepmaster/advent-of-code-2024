@@ -4,18 +4,44 @@ const INPUT: &str = include_str!("../input.txt");
 
 fn main() {
     assert_eq!(438, simulate(INPUT, [70, 70], 1024));
+    assert_eq!([26, 22], find_blocker(INPUT, [70, 70]));
 }
 
 type Coord = [usize; 2];
 
 fn simulate(s: &str, max: Coord, n_steps: usize) -> usize {
-    let positions = s.lines().map(|l| {
+    let positions = parse(s);
+
+    let corrupted = positions.take(n_steps).collect();
+
+    find_path(max, &corrupted).expect("No path found")
+}
+
+fn find_blocker(s: &str, max: Coord) -> Coord {
+    let positions = parse(s);
+
+    let mut corrupted = BTreeSet::new();
+    for pos in positions {
+        corrupted.insert(pos);
+
+        if find_path(max, &corrupted).is_none() {
+            return pos;
+        }
+    }
+
+    panic!("Wasn't found");
+}
+
+fn parse(s: &str) -> impl Iterator<Item = Coord> {
+    s.lines().map(|l| {
         let (x, y) = l.split_once(',').expect("line malformed");
-        [x, y].map(|v| v.parse::<usize>().expect("coordinate malformed"))
-    });
+        [x, y].map(|v| v.parse().expect("coordinate malformed"))
+    })
+}
 
-    let corrupted = positions.take(n_steps).collect::<BTreeSet<_>>();
+type Obstructions = BTreeSet<Coord>;
 
+fn find_path(max: Coord, corrupted: &Obstructions) -> Option<usize> {
     let start = [0, 0];
     let mut to_visit = BinaryHeap::from_iter([Candidate {
         coord: start,
@@ -27,7 +53,7 @@ fn simulate(s: &str, max: Coord, n_steps: usize) -> usize {
         let Candidate { coord, steps } = candidate;
 
         if coord == max {
-            return steps;
+            return Some(steps);
         }
 
         let newly_inserted = visited.insert(coord);
@@ -45,7 +71,7 @@ fn simulate(s: &str, max: Coord, n_steps: usize) -> usize {
         }
     }
 
-    panic!("No path found");
+    None
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -95,5 +121,10 @@ mod test {
     #[test]
     fn example() {
         assert_eq!(22, simulate(EXAMPLE, [6, 6], 12));
+    }
+
+    #[test]
+    fn example_blocking() {
+        assert_eq!([6, 1], find_blocker(EXAMPLE, [6, 6]));
     }
 }
