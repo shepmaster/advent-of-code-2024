@@ -5,9 +5,23 @@ const INPUT: &str = include_str!("../input.txt");
 
 fn main() {
     assert_eq!([4, 6, 1, 4, 2, 1, 3, 1, 6], &*run_program(INPUT));
+
+    let part_2 = part_2();
+
+    // Was only looking at 8 numbers
+    assert!(part_2 > 25295828419877);
+    // Pasted the penultimate number, not the ultimate number
+    assert!(part_2 > 25295828419909);
+
+    assert_eq!(202366627359274, part_2);
 }
 
-fn run_program(s: &str) -> Vec<i32> {
+fn run_program(s: &str) -> Vec<u64> {
+    let (_, program, registers) = parse(s);
+    run(program, registers)
+}
+
+fn parse(s: &str) -> (Vec<u64>, Vec<Opcode>, [u64; 3]) {
     use Opcode::*;
 
     let mut l = s.lines();
@@ -16,7 +30,7 @@ fn run_program(s: &str) -> Vec<i32> {
         let l = l.next().expect("Missing register");
         let (_, v) = l.split_once(':').expect("Register malformed");
         v.trim()
-            .parse::<i32>()
+            .parse::<u64>()
             .expect("Register value not a number")
     };
 
@@ -28,6 +42,13 @@ fn run_program(s: &str) -> Vec<i32> {
 
     let p = l.next().expect("Missing program");
     let (_, p) = p.split_once(':').expect("Program malformed");
+
+    let raw_program = p
+        .trim()
+        .split(',')
+        .map(|c| c.parse().expect("Invalid number"))
+        .collect();
+
     let program = p
         .trim()
         .split(',')
@@ -43,17 +64,22 @@ fn run_program(s: &str) -> Vec<i32> {
             "7" => Cdv(a.parse().unwrap()),
             _ => panic!("Unknown opcode `{op}`"),
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    let mut registers = [a, b, c];
+    (raw_program, program, [a, b, c])
+}
+
+fn run(program: Program, mut registers: Registers) -> Vec<u64> {
+    use Opcode::*;
+
     let mut ip = 0;
     let mut output = vec![];
 
     while let Some(opcode) = program.get(ip) {
-        fn division(arg: &Combo, registers: &Registers) -> i32 {
+        fn division(arg: &Combo, registers: &Registers) -> u64 {
             let arg = arg.value(registers);
             let numer = registers[REG_A];
-            let denom = 2i32.pow(arg as u32);
+            let denom = 2u64.pow(arg as u32);
             numer / denom
         }
 
@@ -104,7 +130,8 @@ fn run_program(s: &str) -> Vec<i32> {
 const REG_A: usize = 0;
 const REG_B: usize = 1;
 const REG_C: usize = 2;
-type Registers = [i32; 3];
+type Registers = [u64; 3];
+type Program = Vec<Opcode>;
 
 #[derive(Debug)]
 enum Opcode {
@@ -128,7 +155,7 @@ enum Opcode {
 #[derive(Debug, Copy, Clone)]
 struct Lit(u8);
 impl Lit {
-    fn value(&self) -> i32 {
+    fn value(&self) -> u64 {
         self.0.into()
     }
 }
@@ -170,7 +197,7 @@ impl FromStr for Combo {
 }
 
 impl Combo {
-    fn value(self, registers: &Registers) -> i32 {
+    fn value(self, registers: &Registers) -> u64 {
         use Combo::*;
 
         match self {
@@ -193,4 +220,78 @@ mod test {
     fn example() {
         assert_eq!([4, 6, 3, 5, 6, 3, 5, 2, 1, 0], &*run_program(EXAMPLE));
     }
+}
+
+// My specific input disassembles to
+//
+// BST A
+// BXL 1
+// CDV B
+// BXC
+// BXL 4
+// ADV 3
+// OUT B
+// JNZ 0
+//
+// Logic-wise, that's
+//
+// B = A % 8
+// B ^= 1
+// C = A / 2**B
+// B ^= C
+// B ^= 4
+// A = A / 8
+// OUT B % 8
+// JNZ 0
+//
+// Applying and substituting each step
+//
+// A = A0, B = B0, C = C0
+// 1. B = A0 % 8
+// 2. B = (A0 % 8) ^ 1
+// 3. C = A0 / 2**((A0 % 8) ^ 1)
+// 4. B = ((A0 % 8) ^ 1) ^ (A0 / 2**((A0 % 8) ^ 1))
+// 5. B = (((A0 % 8) ^ 1) ^ (A0 / 2**((A0 % 8) ^ 1))) ^ 4
+// 6. A = A0 / 8
+// 7. OUT ((((A0 % 8) ^ 1) ^ (A0 / 2**((A0 % 8) ^ 1))) ^ 4) % 8
+// 8. JNZ 0
+//
+// Combined, each loop's total logic is
+//
+// A = A0 / 8
+// B = (((A0 % 8) ^ 1) ^ (A0 / 2**((A0 % 8) ^ 1))) ^ 4
+// OUT B % 8
+// JNZ 0
+
+fn part_2() -> u64 {
+    let (raw_program, program, mut registers) = parse(INPUT);
+
+    // Starts at zero so the program would exit the loop
+    let mut a0 = 0;
+
+    // Walk backwards to find each `a0` (the starting value of `a`)
+    // that would output the desired `b`.
+
+    'outer: for &output_b in raw_program.iter().rev() {
+        // A = A0 / 8
+        // So multiply by 8 and then start searching upward from there
+        for a in (a0 * 8).. {
+            // B = (((A0 % 8) ^ 1) ^ (A0 / 2**((A0 % 8) ^ 1))) ^ 4
+            let k = u8::try_from((a % 8) ^ 1).unwrap();
+            let b = (u64::from(k) ^ (a / 2u64.pow(k.into()))) ^ 4;
+
+            if b % 8 == output_b {
+                a0 = a;
+                continue 'outer;
+            }
+        }
+
+        panic!("Did not find a viable a");
+    }
+
+    registers[REG_A] = a0;
+    let output = run(program, registers);
+    assert_eq!(raw_program, output);
+
+    a0
 }
