@@ -3,10 +3,11 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap, btree_map::Entry};
 const INPUT: &str = include_str!("../input.txt");
 
 fn main() {
-    assert_eq!(1395, n_cheats(INPUT, 100));
+    assert_eq!(1395, n_cheats(INPUT, 2, 100));
+    assert_eq!(993178, n_cheats(INPUT, 20, 100));
 }
 
-fn n_cheats(s: &str, at_least_ps: usize) -> usize {
+fn n_cheats(s: &str, max_cheats: usize, at_least_ps: usize) -> usize {
     let mut start = None;
     let mut end = None;
     let mut walls = BTreeSet::new();
@@ -52,7 +53,7 @@ fn n_cheats(s: &str, at_least_ps: usize) -> usize {
     // find how much we can save.
 
     let distances = distances(&walls, end);
-    let saved = cheating_paths(&walls, start, end, distances);
+    let saved = cheating_paths(&walls, start, end, distances, max_cheats);
 
     saved
         .into_iter()
@@ -145,6 +146,7 @@ fn cheating_paths(
     start: Coord,
     end: Coord,
     distances: Distances,
+    max_cheats: usize,
 ) -> BTreeMap<usize, usize> {
     let mut to_visit = BinaryHeap::from_iter([Candidate {
         coord: start,
@@ -168,15 +170,25 @@ fn cheating_paths(
         {
             let start_distance = distances[&candidate.coord];
 
-            let cheating_coords = neighbors(candidate.coord)
-                .flat_map(neighbors)
-                .filter(|&n| walls.valid(n));
+            let mut cheat_area = BTreeMap::from_iter([(candidate.coord, 0)]);
+            for _ in 0..max_cheats {
+                let new_cheats = cheat_area
+                    .iter()
+                    .flat_map(|(&c, &d)| neighbors(c).map(move |n| (n, d + 1)))
+                    .collect::<Vec<_>>();
 
-            for cheat_coord in cheating_coords {
+                for (c, d) in new_cheats {
+                    cheat_area.entry(c).or_insert(d);
+                }
+            }
+
+            let cheating_coords = cheat_area.into_iter().filter(|&(c, _)| walls.valid(c));
+
+            for (cheat_coord, distance) in cheating_coords {
                 let saved = (|| {
                     let cheat_distance = *distances.get(&cheat_coord)?;
                     let delta = start_distance.checked_sub(cheat_distance)?;
-                    let saved = delta.checked_sub(2)?;
+                    let saved = delta.checked_sub(distance)?;
                     (saved > 0).then_some(saved)
                 })();
 
@@ -224,6 +236,11 @@ mod test {
 
     #[test]
     fn example() {
-        assert_eq!(5, n_cheats(EXAMPLE, 20));
+        assert_eq!(5, n_cheats(EXAMPLE, 2, 20));
+    }
+
+    #[test]
+    fn example_20() {
+        assert_eq!(285, n_cheats(EXAMPLE, 20, 50));
     }
 }
